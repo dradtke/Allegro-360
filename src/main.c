@@ -2,86 +2,14 @@
 #include <allegro5/allegro.h>
 #include <allegro5/allegro_font.h>
 #include <allegro5/allegro_ttf.h>
+#include "xc.h"
 
-/*
- * Struct representing the state of an Xbox 360 controller.
- */
-typedef struct {
-	float leftstick_x;
-	float leftstick_y;
-	float rightstick_x;
-	float rightstick_y;
-	float dpad_x;
-	float dpad_y;
-	float left_trigger;
-	float right_trigger;
-} XBOX_CONTROLLER;
-
-XBOX_CONTROLLER *new_controller()
-{
-	XBOX_CONTROLLER *cont = (XBOX_CONTROLLER*)malloc(sizeof(XBOX_CONTROLLER));
-
-	// zero out all values
-	cont->leftstick_x = 0;
-	cont->leftstick_y = 0;
-	cont->rightstick_x = 0;
-	cont->rightstick_y = 0;
-	cont->dpad_x = 0;
-	cont->dpad_y = 0;
-	cont->left_trigger = 0;
-	cont->right_trigger = 0;
-
-	return cont;
-}
-
-
-/*
- * Update the controller's axis positions.
- */
-void update_controller_axes(XBOX_CONTROLLER *cont, ALLEGRO_EVENT event)
-{
-	int axis = event.joystick.axis;
-	float pos = event.joystick.pos;
-
-	switch (event.joystick.stick) {
-		case 0:
-			if (axis == 0)
-				cont->leftstick_x = pos;
-			else if (axis == 1)
-				cont->leftstick_y = pos;
-			break;
-		case 1:
-			if (axis == 0)
-				cont->left_trigger = (pos + 1.0) / 2.0;
-			else if (axis == 1)
-				cont->rightstick_x = pos;
-			break;
-		case 2:
-			if (axis == 0)
-				cont->rightstick_y = pos;
-			else if (axis == 1)
-				cont->right_trigger = (pos + 1.0) / 2.0;
-			break;
-		case 3:
-			if (axis == 0)
-				cont->dpad_x = pos;
-			else if (axis == 1)
-				cont->dpad_y = pos;
-			break;
-	}
-}
-
-/*
- * Main.
- */
 int main(void)
 {
 	ALLEGRO_DISPLAY	*display = NULL;
 	ALLEGRO_EVENT_QUEUE	*event_queue = NULL;
 	ALLEGRO_TIMER *timer = NULL;
-	ALLEGRO_JOYSTICK *joystick = NULL;
 	ALLEGRO_FONT *font = NULL;
-	XBOX_CONTROLLER *controller = new_controller();
 
 	bool running = true;
 	bool redraw = false;
@@ -94,17 +22,6 @@ int main(void)
 	timer = al_create_timer(1.0 / 60);
 	if (!timer) {
 		fprintf(stderr, "Failed to create timer.\n");
-		return 1;
-	}
-
-	if (!al_install_joystick()) {
-		fprintf(stderr, "Failed to install joystick.\n");
-		return 1;
-	}
-
-	joystick = al_get_joystick(0);
-	if (!joystick) {
-		fprintf(stderr, "Failed to find installed joystick.\n");
 		return 1;
 	}
 
@@ -128,9 +45,16 @@ int main(void)
 		return 1;
 	}
 
+	xc_install();
+	XC_STATE *controller = xc_get_state(0);
+	if (!controller) {
+		fprintf(stderr, "Failed to grab xbox controller state.\n");
+		return 1;
+	}
+
 	al_register_event_source(event_queue, al_get_display_event_source(display));
 	al_register_event_source(event_queue, al_get_timer_event_source(timer));
-	al_register_event_source(event_queue, al_get_joystick_event_source());
+	al_register_event_source(event_queue, xc_get_event_source());
 
 	al_start_timer(timer);
 
@@ -153,8 +77,10 @@ int main(void)
 				case ALLEGRO_EVENT_DISPLAY_CLOSE:
 					running = false;
 					break;
-				case ALLEGRO_EVENT_JOYSTICK_AXIS:
-					update_controller_axes(controller, event);
+				case XC_EVENT_AXIS:
+				case XC_EVENT_BUTTON_DOWN:
+				case XC_EVENT_BUTTON_UP:
+					xc_update(event);
 					break;
 				default:
 					fprintf(stderr, "Unsupported event received: %d\n", event.type);
@@ -168,17 +94,30 @@ int main(void)
 		if (redraw && al_is_event_queue_empty(event_queue)) {
 			al_clear_to_color(al_map_rgb(0, 0, 0));
 
-			al_draw_textf(font, al_map_rgb(255, 255, 255), 10, 10, ALLEGRO_ALIGN_LEFT, "left stick: (%f,%f)", controller->leftstick_x, controller->leftstick_y);
-			al_draw_textf(font, al_map_rgb(255, 255, 255), 10, 25, ALLEGRO_ALIGN_LEFT, "right stick: (%f,%f)", controller->rightstick_x, controller->rightstick_y);
+			al_draw_textf(font, al_map_rgb(255, 255, 255), 10, 10, ALLEGRO_ALIGN_LEFT, "left stick: (%f,%f)", controller->left_stick_x, controller->left_stick_y);
+			al_draw_textf(font, al_map_rgb(255, 255, 255), 10, 25, ALLEGRO_ALIGN_LEFT, "right stick: (%f,%f)", controller->right_stick_x, controller->right_stick_y);
 			al_draw_textf(font, al_map_rgb(255, 255, 255), 10, 40, ALLEGRO_ALIGN_LEFT, "d-pad: (%f,%f)", controller->dpad_x, controller->dpad_y);
 			al_draw_textf(font, al_map_rgb(255, 255, 255), 10, 75, ALLEGRO_ALIGN_LEFT, "left trigger: %f", controller->left_trigger);
 			al_draw_textf(font, al_map_rgb(255, 255, 255), 10, 90, ALLEGRO_ALIGN_LEFT, "right trigger: %f", controller->right_trigger);
+
+			al_draw_textf(font, al_map_rgb(255, 255, 255), 450, 10, ALLEGRO_ALIGN_LEFT, "A: %d", controller->button_a);
+			al_draw_textf(font, al_map_rgb(255, 255, 255), 450, 25, ALLEGRO_ALIGN_LEFT, "B: %d", controller->button_b);
+			al_draw_textf(font, al_map_rgb(255, 255, 255), 450, 40, ALLEGRO_ALIGN_LEFT, "X: %d", controller->button_x);
+			al_draw_textf(font, al_map_rgb(255, 255, 255), 450, 55, ALLEGRO_ALIGN_LEFT, "Y: %d", controller->button_y);
+			al_draw_textf(font, al_map_rgb(255, 255, 255), 450, 70, ALLEGRO_ALIGN_LEFT, "Left Stick: %d", controller->button_left_stick);
+			al_draw_textf(font, al_map_rgb(255, 255, 255), 450, 85, ALLEGRO_ALIGN_LEFT, "Right Stick: %d", controller->button_right_stick);
+			al_draw_textf(font, al_map_rgb(255, 255, 255), 450, 100, ALLEGRO_ALIGN_LEFT, "Left Shoulder: %d", controller->button_left_shoulder);
+			al_draw_textf(font, al_map_rgb(255, 255, 255), 450, 115, ALLEGRO_ALIGN_LEFT, "Right Shoulder: %d", controller->button_right_shoulder);
+			al_draw_textf(font, al_map_rgb(255, 255, 255), 450, 130, ALLEGRO_ALIGN_LEFT, "Back: %d", controller->button_back);
+			al_draw_textf(font, al_map_rgb(255, 255, 255), 450, 145, ALLEGRO_ALIGN_LEFT, "Start: %d", controller->button_start);
+			al_draw_textf(font, al_map_rgb(255, 255, 255), 450, 160, ALLEGRO_ALIGN_LEFT, "Xbox: %d", controller->button_xbox);
 
 			al_flip_display();
 			redraw = false;
 		}
 	}
 
+	xc_free_state(controller);
 	al_destroy_display(display);
 	al_destroy_event_queue(event_queue);
 
