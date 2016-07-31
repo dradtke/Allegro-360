@@ -144,12 +144,12 @@ XC_STATE *xc_get_state(int num)
 	if (joy == NULL)
 		return NULL;
 
-	XC_STATE *new = (XC_STATE*)malloc(sizeof(XC_STATE));
-	xc_clear_state(new);
-	new->joy = joy;
-	controllers[num] = new;
+	XC_STATE *state = (XC_STATE*)malloc(sizeof(XC_STATE));
+	xc_clear_state(state);
+	state->joy = joy;
+	controllers[num] = state;
 
-	return new;
+	return state;
 }
 
 /*
